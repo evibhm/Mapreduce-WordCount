@@ -1,58 +1,55 @@
-import java.io.IOException;
-import java.net.URI;
-import java.util.Iterator;
-import java.util.StringTokenizer;
-
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.util.GenericOptionsParser;
 
 public class Main {
-    // 需要在 hosts 里设置NameNode(master)的地址
-    public static String nameNodeUrl = "hdfs://master:9000";
-    public static Configuration conf;
-    public static FileSystem fs;
+    public static void main(String[] args) {
+        // 加载配置文件
+        // 注意设置 HADOOP_USER_NAME 变量
+        Configuration conf = new Configuration(true);
+        conf.addResource("core-site.xml");
+        conf.addResource("hdfs-site.xml");
+        conf.addResource("mapred-site.xml");
+        conf.addResource("yarn-site.xml");
+        // 设置要运行的jar
+        conf.set("mapred.jar", "target/WordCount-0.1.jar");
+        // 设置跨平台
+        conf.set("mapreduce.app-submission.cross-platform", "true");
+        System.out.println("配置Hadoop完成...");
 
-    public static void main(String[] args) throws Exception {
-        // 配置Hadoop
-        conf = new Configuration();
-        conf.set("fs.defaultFS", nameNodeUrl);
-        conf.set("dfs.client.use.datanode.hostname","true");
-        conf.set("dfs.replication", "1");
-        fs = FileSystem.get(new URI(nameNodeUrl), conf, "hadoop");
-        System.out.println(fs);
+        try {
+            // 创建一个任务
+            Job job = Job.getInstance(conf);
+            job.setJarByClass(Main.class);
+            job.setJobName("WordCount");
 
-        // 上传输入文件
-        Path uploadPath = new Path(nameNodeUrl, "/user/hadoop/wordcount/input");
-        if (!fs.exists(uploadPath)) {
-            fs.mkdirs(uploadPath);
-        }
-        fs.copyFromLocalFile(new Path("./input/input1.txt"),uploadPath);
-        fs.copyFromLocalFile(new Path("./input/input2.txt"),uploadPath);
-        System.out.println("Upload File to HDFS");
+            // 设置输入路径
+            FileInputFormat.addInputPath(job, new Path("/user/hadoop/wordcount/input/input1.txt"));
+            FileInputFormat.addInputPath(job, new Path("/user/hadoop/wordcount/input/input2.txt"));
 
-        // 清空输出目录
-        Path outputPath = new Path(nameNodeUrl, "/user/hadoop/wordcount/output");
-        if (fs.exists(outputPath)) {
-            fs.delete(outputPath, true);
-        }
-        fs.mkdirs(outputPath);
+            // 设置输出路径
+            Path outputPath = new Path("/user/hadoop/wordcount/output");
+            FileSystem fs = FileSystem.get(conf);
+            if (fs.exists(outputPath)) {
+                fs.delete(outputPath, true);
+            }
+            FileOutputFormat.setOutputPath(job, outputPath);
 
-        // 列出目录
-        FileStatus[] listStatus = fs.listStatus(new Path("/user/hadoop/wordcount/input"));
-        for (FileStatus fileStatus : listStatus) {
-            System.out.println(fileStatus.getPermission() + " " + fileStatus.getOwner() + " " + fileStatus.getPath());
+            // 设置类
+            job.setMapperClass(WCMapper.class);
+            job.setOutputKeyClass(Text.class);
+            job.setOutputValueClass(IntWritable.class);
+            job.setReducerClass(WCReducer.class);
+
+            // 等待结束
+            job.waitForCompletion(true);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
-
-
 }
